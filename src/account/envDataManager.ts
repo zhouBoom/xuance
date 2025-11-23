@@ -90,6 +90,26 @@ class EnvDataManager {
         return this.store.get(`fingerprint.${accountId}`, {}) as any;
     }
 
+    /**
+     * 保存账户的指纹伪装脚本
+     * @param accountId 账户ID
+     * @param spoofScripts 指纹伪装脚本对象
+     */
+    async saveSpoofScripts(accountId: string, spoofScripts: { canvas?: string; webgl?: string }) {
+        await this.ensureStoreReady();
+        await this.store.set(`spoofScripts.${accountId}`, spoofScripts);
+    }
+
+    /**
+     * 加载账户的指纹伪装脚本
+     * @param accountId 账户ID
+     * @returns 指纹伪装脚本对象
+     */
+    async loadSpoofScripts(accountId: string): Promise<{ canvas?: string; webgl?: string }> {
+        await this.ensureStoreReady();
+        return this.store.get(`spoofScripts.${accountId}`, {}) as { canvas?: string; webgl?: string };
+    }
+
     async deleteAllAccounts() {
         await this.ensureStoreReady();
         try {

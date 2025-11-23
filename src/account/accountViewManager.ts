@@ -45,6 +45,9 @@ class AccountViewManager {
             }
         });
 
+        // 获取并注入指纹伪装脚本
+        await this.injectFingerprintSpoofScripts(accountId, view);
+
         this.views.set(accountId, view);
         if (this.mainWindow) {
             this.mainWindow.addBrowserView(view);
@@ -88,6 +91,9 @@ class AccountViewManager {
             }
         });
 
+        // 获取并注入指纹伪装脚本
+        await this.injectFingerprintSpoofScripts(accountId, view);
+
         this.views.set(accountId, view);
         if (this.mainWindow) {
             const existingViews = this.mainWindow.getBrowserViews();
@@ -113,8 +119,6 @@ class AccountViewManager {
             throw new Error('Account not found');
         }
 
-        const fingerprint = await fingerprintManager.getOrCreateFingerprint(accountId);
-        
         const view = new BrowserView({
             webPreferences: {
                 backgroundThrottling: false,
@@ -129,7 +133,8 @@ class AccountViewManager {
             }
         });
 
-        view.webContents.session.setUserAgent(fingerprint.userAgent, fingerprint.language || 'en-US');
+        // 获取并注入指纹伪装脚本
+        await this.injectFingerprintSpoofScripts(accountId, view);
 
         this.views.set(accountId, view);
         if (this.mainWindow) {
@@ -193,11 +198,44 @@ class AccountViewManager {
                     x: -10000,  // 移到屏幕外
                     y: -10000,  // 移到屏幕外
                     width: 800, // 保持原有尺寸
-                    height: 686 // 保持原有尺寸
+                    height: 686 // 保持原有保持原有尺寸
                 });
             }
         });
         sendToRenderer(getMainWindow() as BrowserWindow, 'open-account-view', {});
+    }
+
+    /**
+     * 注入指纹伪装脚本到浏览器视图
+     * @param accountId 账户ID
+     * @param view 浏览器视图
+     */
+    private async injectFingerprintSpoofScripts(accountId: string, view: BrowserView) {
+        try {
+            // 获取账户的指纹
+            const fingerprint = await fingerprintManager.getOrCreateFingerprint(accountId);
+            
+            // 设置用户代理
+            view.webContents.session.setUserAgent(fingerprint.userAgent, fingerprint.language || 'en-US');
+            
+            // 获取 Canvas 指纹伪装脚本
+            const canvasSpoofScript = await fingerprintManager.getCanvasSpoofScript(accountId);
+            if (canvasSpoofScript) {
+                view.webContents.once('dom-ready', () => {
+                    view.webContents.executeJavaScript(canvasSpoofScript);
+                });
+            }
+            
+            // 获取 WebGL 指纹伪装脚本
+            const webglSpoofScript = await fingerprintManager.getWebglSpoofScript(accountId);
+            if (webglSpoofScript) {
+                view.webContents.once('dom-ready', () => {
+                    view.webContents.executeJavaScript(webglSpoofScript);
+                });
+            }
+        } catch (error) {
+            console.error(`Failed to inject fingerprint spoof scripts for account ${accountId}:`, error);
+        }
     }
 
     public showView(accountId: string) {
