@@ -1,0 +1,13 @@
+{
+    "taskPollingInterval": 5000,
+    "maxConcurrentTasks": 3,
+    "supportedPlatforms": ["Douyin", "Kuaishou", "Xiaohongshu"],
+    "defaultTaskSettings": {
+        "timeout": 30000,
+        "retryAttempts": 3,
+        "browserOptions": {
+            "headless": true,
+            "incognito": true
+        }
+    }
+}

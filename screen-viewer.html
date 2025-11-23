@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>屏幕共享查看器</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status-panel {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-connected { background-color: #4CAF50; }
+        .status-connecting { background-color: #FF9800; }
+        .status-disconnected { background-color: #F44336; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .video-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        #remoteVideo {
+            width: 100%;
+            max-width: 1000px;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            background: #000;
+        }
+
+        .video-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            border: 2px dashed rgba(255,255,255,0.3);
+            border-radius: 8px;
+            font-size: 18px;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .video-placeholder .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            min-width: 200px;
+        }
+
+        .log-panel {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin: 5px 0;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            padding: 2px 0;
+        }
+
+        .log-info { color: #4CAF50; }
+        .log-warning { color: #FF9800; }
+        .log-error { color: #F44336; }
+
+        .mouse-controls {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .mouse-controls label {
+            margin-right: 15px;
+            font-size: 14px;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+
+        #serverUrl {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            width: 200px;
+        }
+
+        #serverUrl::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖥️ 屏幕共享查看器</h1>
+            <p>连接到远程桌面并实时查看屏幕内容</p>
+        </div>
+
+        <div class="status-panel">
+            <h3>连接状态</h3>
+            <div id="connectionStatus">
+                <span class="status-indicator status-disconnected"></span>
+                <span id="statusText">未连接</span>
+            </div>
+            <div style="margin-top: 10px;">
+                <label>信令服务器: </label>
+                <input type="text" id="serverUrl" value="ws://localhost:8080" placeholder="ws://localhost:8080">
+            </div>
+            <div style="margin-top: 10px;">
+                <label>房间ID: </label>
+                <input type="text" id="roomId" value="default-room" placeholder="default-room" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 8px 12px; border-radius: 4px; width: 150px;">
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn" id="connectBtn" onclick="connect()">🔌 连接</button>
+            <button class="btn" id="disconnectBtn" onclick="disconnect()" disabled>🔌 断开</button>
+            <button class="btn" onclick="clearLogs()">🗑️ 清除日志</button>
+            <button class="btn" onclick="toggleStats()">📊 统计信息</button>
+        </div>
+
+        <div class="video-container">
+            <div id="videoPlaceholder" class="video-placeholder">
+                <div class="icon">📺</div>
+                <div>等待屏幕共享连接...</div>
+                <div style="font-size: 14px; margin-top: 10px;">请先启动Electron应用的屏幕共享功能</div>
+            </div>
+            <video id="remoteVideo" autoplay playsinline style="display: none;"></video>
+            
+            <div id="statsPanel" class="stats" style="display: none;">
+                <div><strong>连接统计</strong></div>
+                <div id="statsContent">
+                    <div>分辨率: <span id="resolution">-</span></div>
+                    <div>帧率: <span id="framerate">-</span></div>
+                    <div>比特率: <span id="bitrate">-</span></div>
+                    <div>延迟: <span id="latency">-</span></div>
+                </div>
+            </div>
+
+            <div class="mouse-controls">
+                <label>
+                    <input type="checkbox" id="enableMouseControl">
+                    启用鼠标控制
+                </label>
+                <span style="font-size: 12px; color: rgba(255,255,255,0.7);">
+                    (点击视频区域发送鼠标事件到远程桌面)
+                </span>
+            </div>
+        </div>
+
+        <div class="log-panel">
+            <h4>连接日志</h4>
+            <div id="logContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let peerConnection = null;
+        let dataChannel = null;
+        let statsInterval = null;
+        let clientId = null;
+        let roomId = 'default-room';
+
+        // WebRTC配置
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logContainer = document.getElementById('logContainer');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 更新连接状态
+        function updateStatus(status, text) {
+            const indicator = document.querySelector('.status-indicator');
+            const statusText = document.getElementById('statusText');
+            
+            indicator.className = `status-indicator status-${status}`;
+            statusText.textContent = text;
+        }
+
+        // 连接到信令服务器
+        async function connect() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            roomId = document.getElementById('roomId').value || 'default-room';
+            
+            if (!serverUrl) {
+                log('请输入信令服务器地址', 'error');
+                return;
+            }
+
+            try {
+                log(`正在连接信令服务器，准备加入房间: ${roomId}`);
+                updateStatus('connecting', '连接中...');
+                
+                ws = new WebSocket(serverUrl);
+                
+                ws.onopen = () => {
+                    log('信令服务器连接成功', 'info');
+                    updateStatus('connected', '已连接');
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                };
+
+                ws.onmessage = async (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        log(`收到信令消息: ${message.type}`);
+                        await handleSignalMessage(message);
+                    } catch (error) {
+                        log(`解析信令消息失败: ${error.message}`, 'error');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    log(`WebSocket错误: ${error}`, 'error');
+                    updateStatus('disconnected', '连接错误');
+                };
+
+                ws.onclose = () => {
+                    log('信令服务器连接已关闭', 'warning');
+                    updateStatus('disconnected', '连接断开');
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                };
+
+            } catch (error) {
+                log(`连接失败: ${error.message}`, 'error');
+                updateStatus('disconnected', '连接失败');
+            }
+        }
+
+        // 处理信令消息
+        async function handleSignalMessage(message) {
+            try {
+                switch (message.type) {
+                    case 'welcome':
+                        clientId = message.clientId;
+                        log(`已分配客户端ID: ${clientId}，准备加入房间`);
+                        
+                        // 发送加入房间请求，标识为观众
+                        sendSignal({
+                            type: 'join',
+                            clientType: 'viewer',
+                            roomId: roomId
+                        });
+                        break;
+                        
+                    case 'join-success':
+                        log(`成功加入房间 ${message.roomId} 作为 ${message.clientType}`, 'info');
+                        createPeerConnection();
+                        break;
+                        
+                    case 'streamer-info':
+                        log(`房间内发现推流端: ${message.streamerId}`, 'info');
+                        log(`推流信息: ${JSON.stringify(message.streamInfo)}`);
+                        break;
+                        
+                    case 'no-streamer':
+                        log('房间内暂无推流端，等待推流端加入...', 'warning');
+                        break;
+                        
+                    case 'streamer-joined':
+                        log(`推流端已加入: ${message.streamerId}`, 'info');
+                        break;
+                        
+                    case 'streamer-left':
+                        log(`推流端已离开: ${message.streamerId}`, 'warning');
+                        // 清理视频显示
+                        const remoteVideo = document.getElementById('remoteVideo');
+                        const placeholder = document.getElementById('videoPlaceholder');
+                        remoteVideo.style.display = 'none';
+                        remoteVideo.srcObject = null;
+                        placeholder.style.display = 'flex';
+                        break;
+                        
+                    case 'offer':
+                        log('收到SDP Offer，发送Answer');
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp));
+                        
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        
+                        sendSignal({
+                            type: 'answer',
+                            sdp: answer
+                        });
+                        break;
+                        
+                    case 'ice-candidate':
+                        log('收到ICE候选');
+                        if (peerConnection && peerConnection.remoteDescription) {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+                        } else {
+                            log('等待远程描述设置后再添加ICE候选', 'warning');
+                        }
+                        break;
+                        
+                    default:
+                        log(`未知消息类型: ${message.type}`, 'warning');
+                }
+            } catch (error) {
+                log(`处理信令消息失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 创建PeerConnection
+        function createPeerConnection() {
+            try {
+                peerConnection = new RTCPeerConnection(rtcConfig);
+                log('RTCPeerConnection创建成功');
+
+                // 监听远程流
+                peerConnection.ontrack = (event) => {
+                    log('接收到远程视频流');
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    const placeholder = document.getElementById('videoPlaceholder');
+                    
+                    if (event.streams && event.streams[0]) {
+                        remoteVideo.srcObject = event.streams[0];
+                        remoteVideo.style.display = 'block';
+                        placeholder.style.display = 'none';
+                        
+                        // 开始统计
+                        startStats();
+                        log('视频流显示成功！', 'info');
+                    }
+                };
+
+                // 监听ICE候选
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                        sendSignal({
+                            type: 'ice-candidate',
+                            candidate: event.candidate
+                        });
+                        log('发送ICE候选');
+                    }
+                };
+
+                // 监听连接状态
+                peerConnection.onconnectionstatechange = () => {
+                    const state = peerConnection.connectionState;
+                    log(`WebRTC连接状态: ${state}`);
+                    
+                    if (state === 'connected') {
+                        log('WebRTC连接建立成功！', 'info');
+                        updateStatus('connected', `已连接到房间: ${roomId}`);
+                    } else if (state === 'failed') {
+                        log('WebRTC连接失败', 'error');
+                        updateStatus('disconnected', '连接失败');
+                    }
+                };
+
+                // 监听数据通道
+                peerConnection.ondatachannel = (event) => {
+                    dataChannel = event.channel;
+                    log('鼠标控制数据通道已建立', 'info');
+                    
+                    dataChannel.onopen = () => {
+                        log('鼠标控制数据通道已打开', 'info');
+                    };
+                    
+                    dataChannel.onclose = () => {
+                        log('鼠标控制数据通道已关闭', 'warning');
+                    };
+                };
+
+            } catch (error) {
+                log(`创建PeerConnection失败: ${error.message}`, 'error');
+            }
+        }
+
+        // 发送信令消息
+        function sendSignal(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+            } else {
+                log('无法发送信令消息：连接未建立', 'error');
+            }
+        }
+
+        // 断开连接
+        function disconnect() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            
+            if (dataChannel) {
+                dataChannel.close();
+                dataChannel = null;
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            
+            // 重置UI
+            const remoteVideo = document.getElementById('remoteVideo');
+            const placeholder = document.getElementById('videoPlaceholder');
+            
+            remoteVideo.style.display = 'none';
+            remoteVideo.srcObject = null;
+            placeholder.style.display = 'flex';
+            
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            
+            log('已断开所有连接');
+        }
+
+        // 鼠标控制
+        document.getElementById('remoteVideo').addEventListener('click', (event) => {
+            if (!document.getElementById('enableMouseControl').checked) return;
+            if (!dataChannel || dataChannel.readyState !== 'open') return;
+            
+            const video = event.target;
+            const rect = video.getBoundingClientRect();
+            
+            // 计算相对坐标
+            const x = (event.clientX - rect.left) / rect.width;
+            const y = (event.clientY - rect.top) / rect.height;
+            
+            const mouseEvent = {
+                type: 'click',
+                x: x,
+                y: y,
+                button: event.button
+            };
+            
+            try {
+                dataChannel.send(JSON.stringify(mouseEvent));
+                log(`发送鼠标事件: ${x.toFixed(3)}, ${y.toFixed(3)}`);
+            } catch (error) {
+                log(`发送鼠标事件失败: ${error.message}`, 'error');
+            }
+        });
+
+        // 统计信息
+        function startStats() {
+            if (statsInterval) clearInterval(statsInterval);
+            
+            statsInterval = setInterval(async () => {
+                if (!peerConnection) return;
+                
+                try {
+                    const stats = await peerConnection.getStats();
+                    updateStatsDisplay(stats);
+                } catch (error) {
+                    console.error('获取统计信息失败:', error);
+                }
+            }, 1000);
+        }
+
+        function updateStatsDisplay(stats) {
+            let inboundRtp = null;
+            
+            stats.forEach(report => {
+                if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                    inboundRtp = report;
+                }
+            });
+            
+            if (inboundRtp) {
+                const video = document.getElementById('remoteVideo');
+                document.getElementById('resolution').textContent = 
+                    `${video.videoWidth || 0}x${video.videoHeight || 0}`;
+                document.getElementById('framerate').textContent = 
+                    `${Math.round(inboundRtp.framesPerSecond || 0)} fps`;
+                document.getElementById('bitrate').textContent = 
+                    `${Math.round((inboundRtp.bytesReceived || 0) * 8 / 1000)} kbps`;
+            }
+        }
+
+        // 工具函数
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+        }
+
+        function toggleStats() {
+            const statsPanel = document.getElementById('statsPanel');
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // 页面加载完成后的初始化
+        window.addEventListener('load', () => {
+            log('屏幕共享查看器已加载', 'info');
+            log('输入房间ID后点击连接，等待推流端加入', 'info');
+        });
+
+        // 页面卸载时清理资源
+        window.addEventListener('beforeunload', () => {
+            disconnect();
+        });
+    </script>
+</body>
+</html> 

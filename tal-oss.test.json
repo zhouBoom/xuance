@@ -1,0 +1,7 @@
+{
+  "bucket": "monkey-test",
+  "limit": "100",
+  "chunkSize": 5,
+  "accessKeyId": "5f5f758101d658b7742968c8186f392f",
+  "accessKeySecret": "220dc29dcda3419d6ec7524b0c0de00f"
+}
