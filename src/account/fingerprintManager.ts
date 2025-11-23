@@ -1,4 +1,6 @@
 import { envDataManager } from "./envDataManager";
+import { getCanvasSpoofScript } from "./scripts/canvasSpoof";
+import { getWebglSpoofScript } from "./scripts/webglSpoof";
 type Fingerprint = {
     userAgent: string;
     platform: string;
@@ -6,10 +8,16 @@ type Fingerprint = {
     language: string;
     timeZone: string;
 };
+
+interface SpoofScript {
+    canvas?: string;
+    webgl?: string;
+}
 export class FingerprintManager {
     private fingerprints: Fingerprint[] = [];
     private fingerprintIndex: number = 0;
     private fingerprintMap: Map<string, Fingerprint> = new Map();
+    private spoofScriptMap: Map<string, SpoofScript> = new Map();
 
     constructor() {
         this.initializeFingerprints();
@@ -38,12 +46,87 @@ export class FingerprintManager {
     public async getOrCreateFingerprint(accountId: string): Promise<Fingerprint> {
         let fingerprint = this.fingerprintMap.get(accountId);
         if (!fingerprint) {
-            fingerprint = this.fingerprints[this.fingerprintIndex];
-            this.fingerprintIndex = (this.fingerprintIndex + 1) % this.fingerprints.length;
+            // 尝试从存储加载指纹
+            const storedFingerprint = await envDataManager.loadFingerprint(accountId);
+            
+            if (storedFingerprint.userAgent) {
+                fingerprint = storedFingerprint;
+            } else {
+                // 如果没有存储的指纹，使用新的指纹
+                fingerprint = this.fingerprints[this.fingerprintIndex];
+                this.fingerprintIndex = (this.fingerprintIndex + 1) % this.fingerprints.length;
+                await envDataManager.saveFingerprint(accountId, fingerprint);
+            }
+            
             this.fingerprintMap.set(accountId, fingerprint);
-            await envDataManager.saveFingerprint(accountId, fingerprint);
+            
+            // 尝试加载已保存的指纹伪装脚本
+            const storedSpoofScripts = await envDataManager.loadSpoofScripts(accountId);
+            if (storedSpoofScripts.canvas || storedSpoofScripts.webgl) {
+                this.spoofScriptMap.set(accountId, storedSpoofScripts);
+            } else {
+                // 如果没有存储的脚本，生成新的
+                this.generateSpoofScripts(accountId);
+            }
         }
         return fingerprint;
+    }
+    
+    /**
+     * 生成账户的指纹伪装脚本
+     * @param accountId 账户ID
+     */
+    private async generateSpoofScripts(accountId: string): Promise<void> {
+        const spoofScript: SpoofScript = {
+            canvas: getCanvasSpoofScript(accountId),
+            webgl: getWebglSpoofScript(accountId)
+        };
+        this.spoofScriptMap.set(accountId, spoofScript);
+        // 保存生成的脚本到存储
+        await envDataManager.saveSpoofScripts(accountId, spoofScript);
+    }
+    
+    /**
+     * 获取账户的 Canvas 指纹伪装脚本
+     * @param accountId 账户ID
+     * @returns Canvas 伪装脚本字符串
+     */
+    public async getCanvasSpoofScript(accountId: string): Promise<string> {
+        let spoofScript = this.spoofScriptMap.get(accountId);
+        if (!spoofScript) {
+            await this.generateSpoofScripts(accountId);
+            spoofScript = this.spoofScriptMap.get(accountId)!;
+        }
+        return spoofScript.canvas || '';
+    }
+    
+    /**
+     * 获取账户的 WebGL 指纹伪装脚本
+     * @param accountId 账户ID
+     * @returns WebGL 伪装脚本字符串
+     */
+    public async getWebglSpoofScript(accountId: string): Promise<string> {
+        let spoofScript = this.spoofScriptMap.get(accountId);
+        if (!spoofScript) {
+            await this.generateSpoofScripts(accountId);
+            spoofScript = this.spoofScriptMap.get(accountId)!;
+        }
+        return spoofScript.webgl || '';
+    }
+    
+    /**
+     * 为账户重置所有指纹伪装
+     * @param accountId 账户ID
+     */
+    public async resetAccountFingerprint(accountId: string): Promise<void> {
+        // 移除现有的指纹映射
+        this.fingerprintMap.delete(accountId);
+        this.spoofScriptMap.delete(accountId);
+        
+        // 重新获取新的指纹和生成新的伪装脚本
+        await this.getOrCreateFingerprint(accountId);
+        // 强制生成新的伪装脚本
+        await this.generateSpoofScripts(accountId);
     }
 }
 
