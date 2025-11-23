@@ -16,6 +16,11 @@ node_modules
 coverage
 *.lcov
 .nyc_output
+# Test images
+src/test/*.png
+src/test/*.jpg
+src/test/*.gif
+src/test/*.svg
 
 # Production
 dist
